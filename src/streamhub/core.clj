@@ -1,14 +1,27 @@
 (ns streamhub.core
   (:require [environ.core]
-            [streamhub.app :refer [App start-app! start-dev!]])
+            [streamhub.app :refer [App start-app! start-dev!]
+            [streamhub.serve :refer [gen-handler]]])
   (:gen-class))
+
+(defn make-context [env]
+  {:env env})
 
 (defn make-app []
   (reify App
     (start! [_ env]
-      (println (str "Starting app at " (java.util.Date.) ".")))
+      (let [context (make-context env)
+            handler (gen-handler context)
+            port (edn/read-string (or (env :serve-port) "19424"))]
+        (println (str "Starting app at " (java.util.Date.) " on port " port "."))
+        {:context context
+         :handler handler
+         :serve-port port
+         :app _}))
     (stop! [_ system]
-      (println (str "Stopping app at " (java.util.Date.) ", system:" system)))))
+      (let [port (system :serve-port)
+            on-port (if port (str " on port " port) "")]
+        (println (str "Shutting down http storage app at " (java.util.Date.) on-port "!"))))))
 
 (defn -main [& [command & args]]
   (let [!app (ref nil)]

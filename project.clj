@@ -9,7 +9,6 @@
                  [environ "1.0.0"]
                  [ring/ring-core "1.3.2"]
                  [ring/ring-defaults "0.1.4"]
-                 [http-kit "2.1.18"]
                  [compojure "1.3.2"]]
   :main ^:skip-aot streamhub.core
   :target-path "target/%s"
