@@ -53,7 +53,8 @@
   (let [start-fn-sym 'streamhub.app/start-app!
         bind-tools-fn-sym 'streamhub.app/bind-user-tools!]
     ((get-sym bind-tools-fn-sym) !instance env-sym app-sym)
-    ((get-sym start-fn-sym) !instance env-sym app-sym)))
+    ((get-sym start-fn-sym) !instance env-sym app-sym))
+  (println "App reloaded!"))
 
 (defn start-dev! [!instance env-sym app-sym]
   (start-nrepl! (edn/read-string (or ((get-sym env-sym) :nrepl-port) "7888")))

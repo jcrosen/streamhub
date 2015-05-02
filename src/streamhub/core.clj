@@ -1,7 +1,8 @@
 (ns streamhub.core
   (:require [environ.core]
-            [streamhub.app :refer [App start-app! start-dev!]
-            [streamhub.serve :refer [gen-handler]]])
+            [clojure.tools.reader.edn :as edn]
+            [streamhub.app :refer [App start-app! start-dev!]]
+            [streamhub.serve :refer [gen-handler]])
   (:gen-class))
 
 (defn make-context [env]
