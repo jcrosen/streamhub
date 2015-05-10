@@ -2,11 +2,13 @@
   (:require [environ.core]
             [clojure.tools.reader.edn :as edn]
             [streamhub.app :refer [App start-app! start-dev!]]
-            [streamhub.serve :refer [gen-handler]])
+            [streamhub.serve :refer [gen-handler start-server stop-server]]
+            [streamhub.stream :refer [gen-streams-state]])
   (:gen-class))
 
 (defn make-context [env]
-  {:env env})
+  {:env env
+   :!streams (gen-streams-state)})
 
 (defn make-app []
   (reify App
@@ -18,11 +20,12 @@
         {:context context
          :handler handler
          :serve-port port
+         :server (start-server handler :port port)
          :app _}))
     (stop! [_ system]
-      (let [port (system :serve-port)
-            on-port (if port (str " on port " port) "")]
-        (println (str "Shutting down http storage app at " (java.util.Date.) on-port "!"))))))
+      (println (str "Shutting down http storage app at " (java.util.Date.)))
+      (when-let [server (system :server)]
+        (stop-server server)))))
 
 (defn -main [& [command & args]]
   (let [!app (ref nil)]

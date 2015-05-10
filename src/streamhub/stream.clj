@@ -28,7 +28,7 @@
   "Starts a go-loop that pushes any data written to the stream to subscribers"
   (let [write-ch (get-in @!streams [stream-id :chan])]
     (swap! !streams assoc-in [stream-id :go-ch]
-      (async/go-loop []
+      (go-loop []
         (when-let [data (<! write-ch)]
           (loop [subscribers (get-in @!streams [stream-id :subscribers])]
             ; subscribers is a set of id/channel key/val pairs
