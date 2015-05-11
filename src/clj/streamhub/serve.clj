@@ -12,6 +12,7 @@
   (let [!streams (context :!streams)
         sub-chan (async/chan)
         sub-id (subscribe-to-stream! !streams stream-id sub-chan)]
+    (println (str "New client subscriber: " sub-id))
     (fn [request]
       (s/with-channel request web-chan
         (let [sub-go-chan (go-loop []
@@ -22,13 +23,13 @@
                                 (close-subscription! !streams stream-id sub-id)
                                 (async/close! sub-go-chan)
                                 (println "web-chan closed: " status)))
-          (s/on-receive web-chan (fn [data] ;; echo it back
+          (s/on-receive web-chan (fn [data]
                                   (s/send! web-chan data))))))))
 
 (defn gen-routes [context]
   (routes
     (GET "/" req (str req))
-    (GET "/streams" req (str "Streams:\n" @(context :!streams)))
+    (GET "/streams" req (str "<html><head><script type='text/javascript' src='/js/main.js'></script></head><body>Streams:\n" @(context :!streams) "</body></html>"))
     (GET "/stream/:stream-id" [stream-id] (gen-stream-handler context stream-id))
     (cmpr/not-found "404 - Not Found")))
 

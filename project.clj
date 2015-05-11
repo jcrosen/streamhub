@@ -3,7 +3,9 @@
   :url "http://github.com/jcrosen/streamhub"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
+
   :dependencies [[org.clojure/clojure "1.6.0"]
+                 [org.clojure/clojurescript "0.0-2985"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
                  [org.clojure/tools.namespace "0.2.4"]
                  [org.clojure/tools.reader "0.8.13"]
@@ -12,8 +14,25 @@
                  [ring/ring-defaults "0.1.4"]
                  [compojure "1.3.2"]
                  [http-kit "2.1.18"]]
+
   :main ^:skip-aot streamhub.core
+
+  :source-paths ["src/clj"]
+  :resource-paths ["resources"]
+
   :target-path "target/%s"
+
+  :plugins [[lein-cljsbuild "1.0.5"]]
+
+  :cljsbuild { 
+    :builds {:dev { :source-paths ["src/cljs"]
+                    :compiler {
+                      :output-dir "resources/public/js/out"
+                      :output-to "resources/public/js/main.js"
+                      :main "streamhub.main"
+                      :asset-path "js/out"
+                      :optimizations :none}}}}
+
   :profiles {:uberjar {:aot :all}
              :dev {:dependencies [[org.clojure/tools.nrepl "0.2.3"]
                                   [javax.servlet/servlet-api "2.5"]]}
