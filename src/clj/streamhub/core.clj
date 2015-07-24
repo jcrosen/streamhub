@@ -7,7 +7,7 @@
   (:gen-class))
 
 (defn make-context [env]
-  {:env env
+  {:config (merge env {}) ;  TODO - don't use the whole env for config...
    :!streams (gen-streams-state)})
 
 (defn make-app []
