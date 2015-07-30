@@ -7,7 +7,8 @@
   (:gen-class))
 
 (defn make-context [env]
-  {:config (merge env {}) ;  TODO - don't use the whole env for config...
+  ; TODO - don't use the whole env for config...
+  {:config (merge env {:streamhub-cors-allow-origin "http://192.168.1.140:5000"})
    :!streams (gen-streams-state)})
 
 (defn make-app []

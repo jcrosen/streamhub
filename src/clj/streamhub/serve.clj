@@ -7,7 +7,8 @@
             [org.httpkit.server :as s]
             [clojure.core.async :as async :refer [<! >! go-loop]]
             [streamhub.stream :refer [start-stream! publish-stream! close-stream!
-                                      subscribe-to-stream! close-subscription! gen-stream]]
+                                      subscribe-to-stream! close-subscription! gen-stream
+                                      gen-publisher]]
             [streamhub.auth :refer [unsign-token]]
             [buddy.auth :refer [authenticated? throw-unauthorized]]
             [buddy.auth.backends.session :refer [session-backend]]
@@ -28,8 +29,8 @@
       (if (and secret token-alg)
         (let [iss (get-in context [:config :streamhub-token-iss])
               token-data (unsign-token token secret {:alg token-alg :iss iss})]
-          (if-let [username (token-data :username)]
-            (merge {:identity username} (get-session-data token-data))
+          (if-let [user-id (token-data :identity)]
+            (merge {:identity user-id} {:user-data (get-session-data token-data)})
             (throw+ {:type :validation :cause :identity-missing})))
         (throw+ {:type :validation :cause :config-missing})))
     (throw+ {:type :validation :cause :token-missing})))
@@ -119,18 +120,21 @@
 
 (defn unauthorized-handler
   [context request metadata]
-  (if (and (contains? (request :params) :token)
-           (not (= "POST" (request :method))))
-    ((gen-login-auth context) (assoc-in request [:params :next-url] (request :uri)))
-    {:status 403 :body "Nope" :headers {"Content-Type" "text/html"}}))
+  {:status 403 :body (or (metadata :message) "Nope") :headers {"Content-Type" "text/html"}})
+
+(defn wrap-header [handler header value]
+  #(assoc-in (handler %) [:headers header] value))
 
 (defn gen-handler [context]
-  (let [auth-backend (session-backend {:unauthorized-handler #(unauthorized-handler context %1 %2)})]
+  (let [auth-backend (session-backend {:unauthorized-handler #(unauthorized-handler context %1 %2)})
+        config (context :config)]
     (-> (gen-routes context)
         (wrap-authorization auth-backend)
         (wrap-authentication auth-backend)
         (wrap-json-response)
         (wrap-json-params)
+        (wrap-header "Access-Control-Allow-Origin" (or (config :streamhub-cors-allow-origin) "*"))
+        (wrap-header "Access-Control-Allow-Credentials" (or (config :streamhub-cors-allow-credentials) "true"))
         (wrap-defaults (assoc-in site-defaults [:security :anti-forgery] false)))))
 
 (defn start-server [handler & args]

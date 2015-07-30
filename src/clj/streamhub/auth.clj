@@ -18,5 +18,3 @@
 
 (defn sign-token [data secret & [alg]]
   (jws/sign data secret {:alg (or alg :hs256)}))
-
-
