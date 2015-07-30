@@ -12,3 +12,4 @@ pom.xml.asc
 tmp
 resources/
 todo.md
+.lein-repl-history

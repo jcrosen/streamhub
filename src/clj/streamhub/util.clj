@@ -5,3 +5,7 @@
   (remove nil? (reduce #(conj %1 (select-map %2)) [] keys-seq)))
 
 (defn gen-uuid [type] (str type "-" (java.util.UUID/randomUUID)))
+
+(defn contains-many?
+  [m ks]
+  (every? #(contains? m %) ks))

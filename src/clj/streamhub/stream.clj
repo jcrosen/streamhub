@@ -20,9 +20,10 @@
 
 (defn subscribe-to-stream! [!streams stream-id chan]
   "Add a channel to the stream's subscribers map and return the subscription id"
-  (let [sub-id (gen-uuid "sub")]
-    (swap! !streams assoc-in [stream-id :subscribers sub-id] chan)
-    sub-id))
+  (when (contains? @!streams stream-id)
+    (let [sub-id (gen-uuid "sub")]
+      (swap! !streams assoc-in [stream-id :subscribers sub-id] chan)
+      sub-id)))
 
 (defn start-stream! [!streams stream-id]
   "Starts a go-loop that pushes any data written to the stream to subscribers"
@@ -37,7 +38,7 @@
               (recur (rest subscribers))))
           (recur))))))
 
-(defn write-to-stream [!streams stream-id data]
+(defn write-to-stream! [!streams stream-id data]
   (async/put! (get-in @!streams [stream-id :chan]) data))
 
 (defn close-subscription! [!streams stream-id sub-id]

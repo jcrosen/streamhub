@@ -9,10 +9,13 @@
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
                  [org.clojure/tools.namespace "0.2.4"]
                  [org.clojure/tools.reader "0.8.13"]
-                 [environ "1.0.0"]
                  [ring/ring-core "1.3.2"]
                  [ring/ring-defaults "0.1.4"]
+                 [ring/ring-json "0.3.1"]
+                 [buddy/buddy-auth "0.6.0"]
+                 [slingshot "0.12.2"]
                  [compojure "1.3.2"]
+                 [environ "1.0.0"]
                  [http-kit "2.1.18"]]
 
   :main ^:skip-aot streamhub.core
