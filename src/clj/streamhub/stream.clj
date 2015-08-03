@@ -1,6 +1,7 @@
 (ns streamhub.stream
   (:require [clojure.core.async :as async :refer [<! >! go-loop go]]
-            [streamhub.util :refer [select-values gen-uuid]]))
+            [streamhub.util :refer [select-values gen-uuid]]
+            [taoensso.carmine :as car]))
 
 (defn gen-streams-state [] (atom {}))
 
@@ -54,3 +55,52 @@
     (doseq [sub (stream :subscribers)] (close-subscription! !streams stream-id (first sub)))
     (swap! !streams dissoc stream-id)
     (doseq [chan (select-values stream [:chan :go-ch])] (async/close! chan))))
+
+;; Publishers
+(defprotocol StreamPublisher
+  "A generic stream publisher protocol"
+  (help [this] "A map of config keys and value descriptions")
+  (start! [this] "Start the stream publisher")
+  (stop! [this start-val] "Stop the stream publisher"))
+
+(deftype RedisSubPublisher [config]
+  StreamPublisher
+  (help [this] {:conn-opts "Carmine connection options map like {:spec {:host ...}}"
+                :pattern "Listener pattern for redis pub/sub like 'foo:bar' or 'foo*'"
+                :event-fn "Function to execute when sub data is received"})
+  (start! [this]
+    (println "Starting RedisSubPublisher!")
+    (let [spec (get-in config [:conn-opts :spec])
+          pattern (config :pattern)
+          event-fn (get config :event-fn #(println %))]
+      (car/with-new-pubsub-listener spec
+        {pattern event-fn}
+        (car/subscribe pattern))))
+  (stop! [this start-val]
+    (println "Stopping RedisSubPublisher")
+    (car/close-listener start-val)))
+
+(deftype TimePublisher [config]
+  StreamPublisher
+  (help [this] {:interval "Time in miliseconds to wait between sending time events"
+                :event-fn "Function to execute when time event is initiated"})
+  (start! [this]
+    (let [interval (get config :interval 1000)
+          event-fn (get config :event-fn #(println %))
+          control-ch (async/chan (async/dropping-buffer 1))
+          loop-ch (go-loop []
+                    (event-fn (str (java.util.Date.)))
+                    (Thread/sleep interval)
+                    (when (>! control-ch 1)
+                      (recur)))]
+      {:loop-ch loop-ch :control-ch control-ch}))
+  (stop! [this start-val]
+    (async/close! (start-val :control-ch))
+    (async/close! (start-val :loop-ch))))
+
+(defn gen-publisher [adapter-sym config]
+  (let [sym (if (symbol? adapter-sym) adapter-sym (symbol adapter-sym))]
+    ; Using eval here is a bit dangerous and slow but required given the
+    ; constraints of clojure's interop with Java classes
+    ; consider revising...
+    (eval `(new ~sym ~config))))
