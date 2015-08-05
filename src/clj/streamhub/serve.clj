@@ -6,14 +6,15 @@
             [compojure.route :as cmpr]
             [org.httpkit.server :as s]
             [clojure.core.async :as async :refer [<! >! go-loop]]
-            [streamhub.stream :refer [start-stream! publish-stream! close-stream!
-                                      subscribe-to-stream! close-subscription! gen-stream
-                                      gen-publisher]]
+            [streamhub.stream :refer [gen-stream add-stream! start-stream!
+                                      publish-to-stream! subscribe-to-stream! close-subscriber!
+                                      write-to-stream! close-stream!]]
             [streamhub.auth :refer [unsign-token]]
             [buddy.auth :refer [authenticated? throw-unauthorized]]
             [buddy.auth.backends.session :refer [session-backend]]
             [buddy.auth.middleware :refer [wrap-authentication wrap-authorization]]
-            [slingshot.slingshot :refer [try+ throw+]]))
+            [slingshot.slingshot :refer [try+ throw+]])
+  (:import [streamhub.stream AsyncPublisher]))
 
 (defn get-session-data [token-data]
   "Decompose the token into a map of relevant data"
@@ -52,28 +53,29 @@
                                   (recur)))]
               (println (str "New client subscriber: " sub-id))
               (s/on-close web-chan (fn [status]
-                                    (close-subscription! !streams stream-id sub-id)
+                                    (close-subscriber! !streams stream-id sub-id)
                                     (async/close! sub-go-chan)
                                     (println "Subscription closed: " status)))
               (s/on-receive web-chan (fn [data]
                                       (s/send! web-chan data)))))
           {:status 404 :body "Stream not found"})))))
 
-(defn gen-stream-publication [context stream-data]
+(defn gen-stream-publication [context stream-data & [ref-id]]
   (let [!streams (context :!streams)]
     (fn [request]
       (when-not (authenticated? request)
         (try+
           (require-auth! context request)
           (catch [:type :validation] e (throw-unauthorized e))))
-      (let [stream (gen-stream :metadata stream-data)
+      (let [stream (gen-stream :metadata stream-data :ref-id ref-id)
             pub-chan (stream :chan)
-            stream-id (stream :id)]
-        (publish-stream! !streams stream)
-        (start-stream! !streams stream-id)
+            uuid (stream :uuid)]
+        (add-stream! !streams stream)
+        (start-stream! !streams uuid)
         (s/with-channel request web-chan
+          (publish-to-stream! !streams uuid (new AsyncPublisher {:chan web-chan}))
           (s/on-close web-chan (fn [status]
-                                (close-stream! !streams stream-id)
+                                (close-stream! !streams uuid)
                                 (println "Publication closed: " status)))
           (s/on-receive web-chan (fn [data]
                                     (async/put! pub-chan data))))))))
@@ -90,32 +92,43 @@
 
 (defn logout
   [request]
-  (-> (redirect "/login")
+  (-> (response {:ok "ok" :identity nil})
       (assoc :session {})))
 
 (defn gen-login-auth [context]
   (fn [request]
     (try+
-      (let [next-url (get-in request [:params :next-url] "/")
-            updated-session (require-auth! context request)]
-        (-> (redirect next-url)
+      (let [updated-session (require-auth! context request)]
+        (-> (response {:ok "ok" :identity (updated-session :identity)})
             (assoc :session updated-session)))
       (catch [:type :validation] e
-        (case (e :cause)
-              :identity-missing {:status 401 :body "Credentials not supplied"}
-              :token-missing {:status 401 :body "Credentials not supplied"}
-              :config-missing {:status 500 :body "Configuration error, contact administrator"}
-              {:status 401 :body (e :message)})))))
+        (let [err-resp #(into {} [[:status %1] [:body {:error %2}]])]
+          (case (e :cause)
+            :identity-missing (err-resp 401 "Identity not supplied")
+            :token-missing (err-resp 401 "Credentials not supplied")
+            :config-missing (err-resp 500 "Configuration error, contact administrator")
+            (err-resp 401 (e :message))))))))
+
+(defn get-stream-data [stream]
+  (select-keys stream [:uuid :metadata :ref-id]))
+
+(defn gen-get-streams [context]
+  (fn [request]
+    (let [streams @(context :!streams)]
+      (response (into {} (map #(vector (% 0) (get-stream-data (% 1))) streams))))))
 
 (defn gen-routes [context]
   (routes
-    (GET "/" req (str req))
+    (GET "/" req (response (select-keys req [:identity :session :cookies :headers])))
     (GET "/login" [] login)
     (POST "/login" [] (gen-login-auth context))
     (GET "/logout" [] logout)
-    (GET "/streams" req (str "<html><head><script type='text/javascript' src='/js/main.js'></script></head><body>Streams:\n" @(context :!streams) "</body></html>"))
-    (GET "/stream/subscribe/:stream-id" req (let [stream-id (get-in req [:params :stream-id])] (gen-stream-subscription context stream-id)))
-    (GET "/stream/publish" [stream-data] (gen-stream-publication context stream-data))
+    (GET "/streams" [] (gen-get-streams context))
+    (GET "/stream/subscribe/:uuid" [uuid] (gen-stream-subscription context uuid))
+    (GET "/stream/publish" req
+      (let [ref-id (get-in req [:params :ref-id])
+            stream-data (into {} (filter #(.startsWith (str (% 0)) ":stream") (req :params)))]
+        (gen-stream-publication context stream-data ref-id)))
     (cmpr/not-found "404 - Not Found")))
 
 (defn unauthorized-handler
