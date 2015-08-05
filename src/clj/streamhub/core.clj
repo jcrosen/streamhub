@@ -8,7 +8,7 @@
 
 (defn make-context [env]
   ; TODO - don't use the whole env for config...
-  {:config (merge env {:streamhub-cors-allow-origin "http://192.168.1.140:5000"})
+  {:config env
    :!streams (gen-streams-state)})
 
 (defn make-app []

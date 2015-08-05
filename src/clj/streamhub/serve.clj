@@ -6,14 +6,15 @@
             [compojure.route :as cmpr]
             [org.httpkit.server :as s]
             [clojure.core.async :as async :refer [<! >! go-loop]]
-            [streamhub.stream :refer [start-stream! publish-stream! close-stream!
-                                      subscribe-to-stream! close-subscription! gen-stream
-                                      gen-publisher]]
+            [streamhub.stream :refer [gen-stream add-stream! start-stream!
+                                      publish-to-stream! subscribe-to-stream! close-subscriber!
+                                      write-to-stream! close-stream!]]
             [streamhub.auth :refer [unsign-token]]
             [buddy.auth :refer [authenticated? throw-unauthorized]]
             [buddy.auth.backends.session :refer [session-backend]]
             [buddy.auth.middleware :refer [wrap-authentication wrap-authorization]]
-            [slingshot.slingshot :refer [try+ throw+]]))
+            [slingshot.slingshot :refer [try+ throw+]])
+  (:import [streamhub.stream AsyncPublisher]))
 
 (defn get-session-data [token-data]
   "Decompose the token into a map of relevant data"
@@ -52,7 +53,7 @@
                                   (recur)))]
               (println (str "New client subscriber: " sub-id))
               (s/on-close web-chan (fn [status]
-                                    (close-subscription! !streams stream-id sub-id)
+                                    (close-subscriber! !streams stream-id sub-id)
                                     (async/close! sub-go-chan)
                                     (println "Subscription closed: " status)))
               (s/on-receive web-chan (fn [data]
@@ -69,9 +70,10 @@
       (let [stream (gen-stream :metadata stream-data :ref-id ref-id)
             pub-chan (stream :chan)
             uuid (stream :uuid)]
-        (publish-stream! !streams stream)
+        (add-stream! !streams stream)
         (start-stream! !streams uuid)
         (s/with-channel request web-chan
+          (publish-to-stream! !streams uuid (new AsyncPublisher {:chan web-chan}))
           (s/on-close web-chan (fn [status]
                                 (close-stream! !streams uuid)
                                 (println "Publication closed: " status)))
