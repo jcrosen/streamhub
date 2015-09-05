@@ -4,17 +4,17 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
 
-  :dependencies [[org.clojure/clojure "1.6.0"]
-                 [org.clojure/clojurescript "0.0-2985"]
+  :dependencies [[org.clojure/clojure "1.7.0"]
+                 [org.clojure/clojurescript "1.7.48"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
-                 [org.clojure/tools.namespace "0.2.4"]
-                 [org.clojure/tools.reader "0.8.13"]
-                 [ring/ring-core "1.3.2"]
-                 [ring/ring-defaults "0.1.4"]
-                 [ring/ring-json "0.3.1"]
-                 [buddy/buddy-auth "0.6.0"]
+                 [org.clojure/tools.namespace "0.2.11"]
+                 [org.clojure/tools.reader "0.10.0-alpha1"]
+                 [ring/ring-core "1.4.0"]
+                 [ring/ring-defaults "0.1.5"]
+                 [ring/ring-json "0.4.0"]
+                 [buddy/buddy-auth "0.6.2"]
                  [slingshot "0.12.2"]
-                 [compojure "1.3.2"]
+                 [compojure "1.4.0"]
                  [environ "1.0.0"]
                  [http-kit "2.1.18"]
                  [com.taoensso/carmine "2.11.1"]]
@@ -26,7 +26,7 @@
 
   :target-path "target/%s"
 
-  :plugins [[lein-cljsbuild "1.0.5"]]
+  :plugins [[lein-cljsbuild "1.1.0"]]
 
   :cljsbuild { 
     :builds {:dev { :source-paths ["src/cljs"]
