@@ -16,7 +16,7 @@
                  [slingshot "0.12.2"]
                  [compojure "1.4.0"]
                  [environ "1.0.0"]
-                 [http-kit "2.1.18"]
+                 [http-kit "2.1.19"]
                  [com.taoensso/carmine "2.11.1"]]
 
   :main ^:skip-aot streamhub.core
