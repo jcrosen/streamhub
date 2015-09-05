@@ -11,7 +11,7 @@
                                       start-stream! close-stream!
                                       publish-to-stream! close-publisher!
                                       subscribe-to-stream! close-subscriber!]]
-            [streamhub.auth :refer [unsign-token]]
+            [streamhub.authenticate :refer [unsign-token!]]
             [streamhub.util :refer [gen-uuid select-values]]
             [buddy.auth :refer [authenticated? throw-unauthorized]]
             [buddy.auth.backends.session :refer [session-backend]]
@@ -33,7 +33,7 @@
           next-url (get-in request [:params :next-url] "/")]
       (if (and secret token-alg)
         (let [iss (get-in context [:config :streamhub-token-iss])
-              token-data (unsign-token token secret {:alg token-alg :iss iss})]
+              token-data (unsign-token! token secret {:alg token-alg :iss iss})]
           (if-let [client-id (token-data :identity)]
             (merge {:identity client-id} {:client-data (get-token-session-data token-data)})
             (throw+ {:type :validation :cause :identity-missing})))

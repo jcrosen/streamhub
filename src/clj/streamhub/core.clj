@@ -34,7 +34,6 @@
 (defn setup-context! [context]
   (let [!streams (context :!streams)
         config (context :config)
-        redis-conn (config :streamhub-redis-pub-sub-conn-opts)
         streams (config :streamhub-default-streams)]
     (dorun (map #(make-stream-from-config !streams %) streams))))
 
