@@ -1,3 +1,5 @@
-(ns streamhub.main)
+(ns streamhub.main
+  (:require [cognitect.transit :as transit]))
 
-(js/alert "Streamhub main js loaded!")
+(enable-console-print!)
+(println "Streamhub main js loaded!")

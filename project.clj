@@ -12,6 +12,8 @@
                  [ring/ring-core "1.4.0"]
                  [ring/ring-defaults "0.1.5"]
                  [ring/ring-json "0.4.0"]
+                 [com.cognitect/transit-clj "0.8.285"]
+                 [com.cognitect/transit-cljs "0.8.225"]
                  [buddy/buddy-auth "0.6.2"]
                  [slingshot "0.12.2"]
                  [compojure "1.4.0"]
