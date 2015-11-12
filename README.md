@@ -1,36 +1,32 @@
 # streamhub
 
-FIXME: description
+A data-agnostic streaming-via-websockets service
 
 ## Installation
 
-Download from http://example.com/FIXME.
+* Install docker and docker-compose
+* Clone the repo
+* `docker-compose build`
 
 ## Usage
 
-FIXME: explanation
-
-    $ java -jar streamhub-0.1.0-standalone.jar [args]
+* `docker-compose up -d`
 
 ## Options
 
-FIXME: listing of options this app accepts.
-
-## Examples
-
-...
+**_TBD_**
 
 ### Bugs
 
-...
+Uh, lots, this isn't even alpha software...
 
-### Any Other Sections
-### That You Think
-### Might be Useful
+## Special Notes
+* This is built on lots of existing tools without which my idea would never have taken shape; thank you to every maintainer of every dependency in this project's configuration!
+* I'm a novice clojure programer, so this is probably full of bad ideas and crummy code; read at your own peril (and feel free to drop me a line if you have any feedback)!
 
 ## License
 
-Copyright © 2015 FIXME
+Copyright © 2015 Jeremy Crosen
 
 Distributed under the Eclipse Public License either version 1.0 or (at
 your option) any later version.
