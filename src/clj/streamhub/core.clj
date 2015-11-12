@@ -2,7 +2,7 @@
   (:require [environ.core]
             [clojure.tools.reader.edn :as edn]
             [streamhub.app :refer [App start-app! start-dev!]]
-            [streamhub.serve :refer [gen-handler start-server stop-server]]
+            [streamhub.serve :refer [gen-clients-state gen-handler start-server stop-server]]
             [streamhub.stream :refer [gen-streams-state gen-publisher gen-stream
                                       add-stream! start-stream! publish-to-stream!]])
   (:gen-class))
@@ -18,7 +18,8 @@
                (map #(vector (keyword (apply str (drop-last 4 (subs (str %) 1))))
                              (edn/read-string (env %))))
                (into {})))
-   :!streams (gen-streams-state)})
+   :!streams (gen-streams-state)
+   :!clients (gen-clients-state)})
 
 (defn make-stream-from-config [!streams stream]
   (let [md (stream :metadata)

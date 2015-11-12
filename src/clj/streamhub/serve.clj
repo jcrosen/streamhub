@@ -2,24 +2,28 @@
   (:require [ring.util.response :refer [response redirect]]
             [ring.middleware.defaults :refer [wrap-defaults site-defaults]]
             [ring.middleware.json :refer [wrap-json-response wrap-json-params]]
+            [cognitect.transit :as transit]
             [compojure.core :refer [routes GET POST]]
             [compojure.route :as cmpr]
             [org.httpkit.server :as s]
             [clojure.core.async :as async :refer [<! >! go-loop]]
-            [streamhub.stream :refer [gen-stream add-stream! start-stream!
-                                      publish-to-stream! subscribe-to-stream! close-subscriber!
-                                      write-to-stream! close-stream!]]
+            [streamhub.stream :refer [gen-stream add-stream!
+                                      start-stream! close-stream!
+                                      publish-to-stream! close-publisher!
+                                      subscribe-to-stream! close-subscriber!]]
             [streamhub.auth :refer [unsign-token]]
+            [streamhub.util :refer [gen-uuid select-values]]
             [buddy.auth :refer [authenticated? throw-unauthorized]]
             [buddy.auth.backends.session :refer [session-backend]]
             [buddy.auth.middleware :refer [wrap-authentication wrap-authorization]]
             [slingshot.slingshot :refer [try+ throw+]])
-  (:import [streamhub.stream AsyncPublisher]))
+  (:import [streamhub.stream AsyncPublisher StreamPublisher]
+           [java.io ByteArrayInputStream ByteArrayOutputStream]))
 
-(defn get-session-data [token-data]
+(defn get-token-session-data [token-data]
   "Decompose the token into a map of relevant data"
   (select-keys (or token-data {})
-               [:username :role :profile-url :avatar-url]))
+               [:name :role :url :avatar-url]))
 
 (defn require-auth! [context request]
   "Return an authenticated session map if credentials are valid, throw+ if not"
@@ -30,59 +34,164 @@
       (if (and secret token-alg)
         (let [iss (get-in context [:config :streamhub-token-iss])
               token-data (unsign-token token secret {:alg token-alg :iss iss})]
-          (if-let [user-id (token-data :identity)]
-            (merge {:identity user-id} {:user-data (get-session-data token-data)})
+          (if-let [client-id (token-data :identity)]
+            (merge {:identity client-id} {:client-data (get-token-session-data token-data)})
             (throw+ {:type :validation :cause :identity-missing})))
         (throw+ {:type :validation :cause :config-missing})))
     (throw+ {:type :validation :cause :token-missing})))
 
-(defn gen-stream-subscription [context stream-id]
-  (let [!streams (context :!streams)]
-    (fn [request]
-      (when-not (authenticated? request)
-        (try+
-          (require-auth! context request)
-          (catch [:type :validation] e (throw-unauthorized e))))
-      (let [sub-chan (async/chan)
-            sub-id (subscribe-to-stream! !streams stream-id sub-chan)]
-        (if sub-id
-          (s/with-channel request web-chan
-            (let [sub-go-chan (go-loop []
-                                (when-let [stream-data (<! sub-chan)]
-                                  (s/send! web-chan stream-data)
-                                  (recur)))]
-              (println (str "New client subscriber: " sub-id))
-              (s/on-close web-chan (fn [status]
-                                    (close-subscriber! !streams stream-id sub-id)
-                                    (async/close! sub-go-chan)
-                                    (println "Subscription closed: " status)))
-              (s/on-receive web-chan (fn [data]
-                                      (s/send! web-chan data)))))
-          {:status 404 :body "Stream not found"})))))
+(defn gen-clients-state []
+  (atom {}))
 
-(defn gen-stream-publication [context stream-data & [ref-id]]
-  (let [!streams (context :!streams)]
+(defn deserialize-client-message [payload]
+  (let [input (ByteArrayInputStream. (.getBytes payload))
+        reader (transit/reader input :json)
+        message (transit/read reader)
+        type (message :type)]
+    {:type type
+     :data (message :data)}))
+
+(defn serialize-client-message [type data]
+  (let [message {:type type
+                 :data data}
+        output (ByteArrayOutputStream. 4096)
+        writer (transit/writer output :json)]
+    (transit/write writer message)
+    (.toString output)))
+
+(defn subscribe-client-to-stream! [context client-id stream-id]
+  (let [{:keys [!streams !clients]} context
+        client (@!clients client-id)
+        sub-chan (async/chan (async/sliding-buffer 1024))
+        sub-id (subscribe-to-stream! !streams stream-id sub-chan)
+        publisher (new AsyncPublisher {:chan sub-chan})
+        send-stream-id (client :send-stream-id)
+        send-pub-id (publish-to-stream! !streams send-stream-id publisher)
+        error (if (nil? sub-id)
+                "Error: unable to subscribe "
+                (if (nil? send-pub-id)
+                  "Error: unable to publish subscription to client"
+                  false))]
+    (if error (do
+                (close-subscriber! !streams stream-id sub-id)
+                (close-publisher! !streams send-stream-id send-pub-id))
+              (swap! !clients assoc-in [client-id :subscriptions stream-id]
+                                       {:sub-id sub-id :send-pub-id send-pub-id}))
+    {:error (or error "")
+     :status (if error :error :ok)
+     :stream-id stream-id
+     :sub-id sub-id
+     :send-pub-id send-pub-id}))
+
+(defn unsubscribe-client-from-stream! [context client-id stream-id]
+  (let [{:keys [!streams !clients]} context
+        client (@!clients client-id)
+        {:keys [sub-id send-pub-id]} (get-in client [:subscriptions stream-id])
+        send-stream-id (client :send-stream-id)]
+    (close-subscriber! !streams stream-id sub-id)
+    (close-publisher! !streams send-stream-id send-pub-id)
+    {:error ""
+     :command :unsubscribe-from-stream
+     :status :ok
+     :stream-id stream-id
+     :sub-id sub-id
+     :send-pub-id send-pub-id}))
+
+(defn handle-client-command [context client-id data]
+  (let [command (data :command)
+        result (case command
+                    :subscribe-to-stream
+                      (let [stream-id (data :stream-id)]
+                        (subscribe-client-to-stream! context client-id stream-id))
+                    :unsubscribe-from-stream
+                      (let [stream-id (data :stream-id)]
+                        (unsubscribe-client-from-stream! context client-id stream-id))
+                    {:status :error
+                     :error "Command not recognized"})]
+    (assoc result :command command)))
+
+(defn handle-client-query [context client-id data]
+  (let [query (data :query)]
+    (assoc {} :query query)))
+
+(defn handle-client-request [context client-id data]
+  (println (str "Handling request for client " client-id " with data: " data))
+  (let [type (data :type)
+        handle-fn (case type
+                    :command #(handle-client-command context client-id data)
+                    :query   #(handle-client-query context client-id data))
+        control-chan (get-in @(context :!clients) [client-id :control-chan])
+        result (handle-fn)]
+    (async/put! control-chan result)))
+
+(defn gen-client! [!streams client-id]
+  "Creates a two-way communication client via dedicated send/receive streams and a dedicated control channel"
+  (let [send-stream (gen-stream :ref-id (str "client-send-" client-id))
+        receive-stream (gen-stream :ref-id (str "client-receive-" client-id))]
+    (add-stream! !streams send-stream)
+    (add-stream! !streams receive-stream)
+    (start-stream! !streams (send-stream :uuid))
+    (start-stream! !streams (receive-stream :uuid))
+    (let [send-chan (async/chan (async/sliding-buffer 1024))
+          send-sub-id (subscribe-to-stream! !streams (send-stream :uuid) send-chan)
+          receive-chan (async/chan (async/sliding-buffer 1024))
+          receive-pub-id (publish-to-stream! !streams (receive-stream :uuid) (new AsyncPublisher {:chan receive-chan}))]
+      {:uuid (gen-uuid (str "client-" client-id))
+       :client-id client-id
+       :control-chan (async/chan (async/dropping-buffer 1024))
+       :send-chan send-chan
+       :send-stream-id (send-stream :uuid)
+       :send-sub-id send-sub-id
+       :receive-chan receive-chan
+       :receive-stream-id (receive-stream :uuid)
+       :receive-pub-id receive-pub-id})))
+
+(defn close-client! [context client-id]
+  (let [{:keys [!streams !clients]} context
+        client (@!clients client-id)]
+  (println (str "Closing client " client-id "!"))
+  (doseq [stream-id (select-values client [:send-stream-id :receive-stream-id])]
+    (close-stream! !streams stream-id))
+  (doseq [chan (select-values client [:send-chan :receive-chan :control-chan])]
+    (async/close! chan))))
+
+(defn gen-client-handler [context]
+  (let [{:keys [!streams !clients]} context]
     (fn [request]
-      (when-not (authenticated? request)
-        (try+
-          (require-auth! context request)
-          (catch [:type :validation] e (throw-unauthorized e))))
-      (let [stream (gen-stream :metadata stream-data :ref-id ref-id)
-            pub-chan (stream :chan)
-            uuid (stream :uuid)]
-        (add-stream! !streams stream)
-        (start-stream! !streams uuid)
-        (s/with-channel request web-chan
-          (publish-to-stream! !streams uuid (new AsyncPublisher {:chan web-chan}))
-          (s/on-close web-chan (fn [status]
-                                (close-stream! !streams uuid)
-                                (println "Publication closed: " status)))
-          (s/on-receive web-chan (fn [data]
-                                    (async/put! pub-chan data))))))))
+      ; Get client identity from the session or throw an unauthorized error
+      (let [client-id (if (authenticated? request)
+                        (request :identity)
+                        (try+
+                          (require-auth! context request)
+                          (catch [:type :validation] e (throw-unauthorized e))))]
+        (s/with-channel request client-chan
+          (let [client (gen-client! !streams client-id)
+                {:keys [receive-chan send-chan control-chan]} client
+                send-go-chan    (go-loop []
+                                  (when-let [data (<! send-chan)]
+                                    (s/send! client-chan (serialize-client-message :stream data))
+                                    (recur)))
+                contrl-go-chan  (go-loop []
+                                  (when-let [data (<! control-chan)]
+                                    (s/send! client-chan (serialize-client-message :control data))
+                                    (recur)))]
+            (swap! !clients assoc client-id client)
+            (s/on-close client-chan
+              (fn [status]
+                (println (str "Closing client " client-id "; status: " status))
+                (close-client! context client-id)
+                (swap! !clients dissoc client-id)))
+            (s/on-receive client-chan
+              (fn [message] 
+                (let [{:keys [type data]} (deserialize-client-message message)]
+                  (if (= type :control)
+                    (handle-client-request context client-id data)
+                    (async/put! receive-chan data)))))))))))
 
 (defn login [request]
   (str "<html>"
         "<body>"
+          "<script type='text/javascript' src='js/main.js'></script>"
           "<form action='/login' method='POST'>"
             "<input type='text' name='token'>"
             "<input type='submit'>"
@@ -124,11 +233,13 @@
     (POST "/login" [] (gen-login-auth context))
     (GET "/logout" [] logout)
     (GET "/streams" [] (gen-get-streams context))
+    (GET "/ws" [] (gen-client-handler context))
     (GET "/stream/subscribe/:uuid" [uuid] (gen-stream-subscription context uuid))
     (GET "/stream/publish" req
       (let [ref-id (get-in req [:params :ref-id])
             stream-data (into {} (filter #(.startsWith (str (% 0)) ":stream") (req :params)))]
         (gen-stream-publication context stream-data ref-id)))
+    (cmpr/resources "/")
     (cmpr/not-found "404 - Not Found")))
 
 (defn unauthorized-handler

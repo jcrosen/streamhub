@@ -5,13 +5,15 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
 
   :dependencies [[org.clojure/clojure "1.7.0"]
-                 [org.clojure/clojurescript "1.7.48"]
-                 [org.clojure/core.async "0.1.346.0-17112a-alpha"]
+                 [org.clojure/clojurescript "1.7.170"]
+                 [org.clojure/core.async "0.2.371"]
                  [org.clojure/tools.namespace "0.2.11"]
-                 [org.clojure/tools.reader "0.10.0-alpha1"]
+                 [org.clojure/tools.reader "1.0.0-alpha1"]
                  [ring/ring-core "1.4.0"]
                  [ring/ring-defaults "0.1.5"]
                  [ring/ring-json "0.4.0"]
+                 [com.cognitect/transit-clj "0.8.285"]
+                 [com.cognitect/transit-cljs "0.8.225"]
                  [buddy/buddy-auth "0.6.2"]
                  [slingshot "0.12.2"]
                  [compojure "1.4.0"]
@@ -26,7 +28,7 @@
 
   :target-path "target/%s"
 
-  :plugins [[lein-cljsbuild "1.1.0"]]
+  :plugins [[lein-cljsbuild "1.1.1"]]
 
   :cljsbuild { 
     :builds {:dev { :source-paths ["src/cljs"]

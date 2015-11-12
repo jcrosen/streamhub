@@ -16,7 +16,7 @@
   (start! [this chan]
     (go-loop []
       (when-let [data (<! (config :chan))]
-        (>! chan)
+        (>! chan data)
         (recur))))
   (stop! [this start-val]
     (async/close! (config :chan))))
@@ -36,8 +36,7 @@
 
 (deftype TimePublisher [config]
   StreamPublisher
-  (help [this] {:interval "Time in miliseconds to wait between sending time events"
-                :event-fn "Function to execute when time event is initiated"})
+  (help [this] {:interval "Time in miliseconds to wait between sending time events"})
   (start! [this chan]
     (let [interval (get config :interval 1000)]
       (go-loop []
@@ -132,3 +131,6 @@
     (doseq [pub (stream :publishers)] (close-publisher! !streams uuid (first pub)))
     (swap! !streams dissoc uuid)
     (doseq [chan (select-values stream [:chan :go-ch])] (async/close! chan))))
+
+(defn get-stream-id-by-ref-id [!streams ref-id]
+  (some #(when (= ((second %) :ref-id)) (first %)) @!streams))
