@@ -234,11 +234,6 @@
     (GET "/logout" [] logout)
     (GET "/streams" [] (gen-get-streams context))
     (GET "/ws" [] (gen-client-handler context))
-    (GET "/stream/subscribe/:uuid" [uuid] (gen-stream-subscription context uuid))
-    (GET "/stream/publish" req
-      (let [ref-id (get-in req [:params :ref-id])
-            stream-data (into {} (filter #(.startsWith (str (% 0)) ":stream") (req :params)))]
-        (gen-stream-publication context stream-data ref-id)))
     (cmpr/resources "/")
     (cmpr/not-found "404 - Not Found")))
 
