@@ -23,8 +23,7 @@
 
 (defn make-stream-from-config [!streams stream]
   (let [md (stream :metadata)
-        ref-id (stream :ref-id)
-        st (gen-stream :metadata md :ref-id ref-id)
+        st (gen-stream :metadata md)
         pub-data (stream :publisher)
         publisher (gen-publisher (pub-data 0) (pub-data 1))]
     (add-stream! !streams st)

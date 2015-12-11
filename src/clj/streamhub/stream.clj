@@ -7,8 +7,8 @@
 (defprotocol StreamPublisher
   "A generic stream publisher protocol"
   (help [this] "A map of config keys and value descriptions")
-  (start! [this chan] "Start the stream publisher")
-  (stop! [this start-val] "Stop the stream publisher"))
+  (start! [this chan] "Start the stream publisher with a channel on which to publish")
+  (stop! [this start-val] "Stop the stream publisher with the return value of start!"))
 
 (deftype AsyncPublisher [config]
   StreamPublisher
@@ -56,14 +56,13 @@
 ;; Streams
 (defn gen-streams-state [] (atom {}))
 
-(defn gen-stream [& {metadata :metadata write-ch :write-ch ref-id :ref-id}]
+(defn gen-stream [& {metadata :metadata write-ch :write-ch}]
   "Create a stream with an embedded write channel, metadata, and subscribers map"
   (let [chan (or write-ch (async/chan (async/sliding-buffer 1024)))
         uuid (gen-uuid "stream")]
     {:chan chan
      :metadata (or metadata {})
      :uuid uuid
-     :ref-id (or ref-id uuid)
      :subscribers {}
      :publishers {}}))
 
@@ -132,5 +131,5 @@
     (swap! !streams dissoc uuid)
     (doseq [chan (select-values stream [:chan :go-ch])] (async/close! chan))))
 
-(defn get-stream-id-by-ref-id [!streams ref-id]
-  (some #(when (= ((second %) :ref-id)) (first %)) @!streams))
+(defn get-stream-ids [!streams pred-fn]
+  (keys (into {} (filter #(pred-fn (get-in % [1 :metadata])) @!streams))))

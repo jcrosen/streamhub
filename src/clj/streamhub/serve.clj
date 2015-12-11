@@ -43,6 +43,8 @@
 (defn gen-clients-state []
   (atom {}))
 
+(defn gen-stream-metadata [type ])
+
 (defn deserialize-client-message [payload]
   (let [input (ByteArrayInputStream. (.getBytes payload))
         reader (transit/reader input :json)
@@ -107,7 +109,8 @@
                       (let [stream-id (data :stream-id)]
                         (unsubscribe-client-from-stream! context client-id stream-id))
                     {:status :error
-                     :error "Command not recognized"})]
+                     :error :command-not-recognized
+                     :text "Command not recognized"})]
     (assoc result :command command)))
 
 (defn handle-client-query [context client-id data]
@@ -126,8 +129,13 @@
 
 (defn gen-client! [!streams client-id]
   "Creates a two-way communication client via dedicated send/receive streams and a dedicated control channel"
-  (let [send-stream (gen-stream :ref-id (str "client-send-" client-id))
-        receive-stream (gen-stream :ref-id (str "client-receive-" client-id))]
+  (let [base-metadata {:client-id client-id
+                       :type :client
+                       :access {:role :admin}}
+        send-stream (gen-stream :metadata (merge base-metadata {:title "Client Send Stream"
+                                                                :direction :send}))
+        receive-stream (gen-stream :metadata (merge base-metadata {:title "Client Receive Stream"
+                                                                   :direction :receive}))]
     (add-stream! !streams send-stream)
     (add-stream! !streams receive-stream)
     (start-stream! !streams (send-stream :uuid))
@@ -219,7 +227,7 @@
             (err-resp 401 (e :message))))))))
 
 (defn get-stream-data [stream]
-  (select-keys stream [:uuid :metadata :ref-id]))
+  (select-keys stream [:uuid :metadata]))
 
 (defn gen-get-streams [context]
   (fn [request]
