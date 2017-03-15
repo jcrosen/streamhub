@@ -3,6 +3,26 @@
             [buddy.auth.accessrules :refer [restrict]]
             [streamhub.util :refer [gen-exception]]))
 
+; Authorization involves:
+;  * Resource/Event
+;  * User context
+;  * Validator function
+;    * Should accept a map with :user-context
+;    * Default is a basic ACL with the standard owner/group/world and
+;      read/write/execute permissions
+;      * read == can subscribe, is visible
+;      * write == can publish, can edit metadata
+;      * execute == 
+
+(defn get-acl [resource]
+  (get-in resource [:authorize :acl]))
+
+(defn gen-acl [acl-set]
+  (let [acl (or acl-set ())])
+  {:authorize {:acl (or acl-set {:owner [:r :w :x]})}})
+
+(defn validate-acl [])
+
 (defn authorize! [validator & args]
   "Accepts an authorization and resource function and throws a standard exception if not authorized"
   (when-let [result (try+ (apply validator args)

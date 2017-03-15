@@ -1,0 +1,15 @@
+web:
+    build: .
+    command: lein trampoline run dev
+    working_dir: /usr/src/app
+    volumes:
+        - .:/usr/src/app
+    environment:
+        STREAMHUB_TOKEN_SECRET: "superserial"
+        STREAMHUB_TOKEN_ALG: "hs256"
+        STREAMHUB_CORS_ALLOW_ORIGIN: "http://jeremy.local:5000"
+        STREAMHUB_DEFAULT_STREAMS_EDN: >
+          [{:metadata {:title "Time Service"
+                       :ref-id "system-time-service"}
+            :publisher [streamhub.stream.TimePublisher {:interval 1000}]}]
+    net: "host"
